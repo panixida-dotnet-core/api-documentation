@@ -262,7 +262,8 @@ Every pull request and push to `main` runs formatting, tests, and mandatory Sona
 
 - `OpenApi = 1`, `AsyncApi = 2`; `Send = 1`, `Receive = 2`. Zero is invalid.
 - Duplicate operation IDs, conflicting message definitions, incompatible channels, or unknown servers fail explicitly.
-- Payload schemas declare JSON Schema draft 2020-12. Local references are rebased without rewriting literal data in examples, defaults, or enum values.
+- When servers are configured, every channel must match a server by protocol and optional `ServerName`. Omitting servers or passing an empty list remains supported.
+- Payload schemas declare JSON Schema draft 2020-12. Local references are rebased without rewriting literal data or resources with an explicit `$id`, including nested resources.
 - The builder implements the AsyncAPI subset used by Core adapters. It does not discover transports, host a UI, or generate clients.
 
 ### Package contents

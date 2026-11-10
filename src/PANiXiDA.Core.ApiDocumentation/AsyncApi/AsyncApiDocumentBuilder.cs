@@ -168,6 +168,11 @@ public static class AsyncApiDocumentBuilder
             throw new InvalidOperationException($"AsyncAPI server '{serverName}' with protocol '{protocol}' was not registered.");
         }
 
+        if (rendering.Servers.Count > 0 && serverRefs.Count == 0)
+        {
+            throw new InvalidOperationException($"No AsyncAPI server with protocol '{protocol}' was registered.");
+        }
+
         var channel = new JsonObject { ["address"] = address, [MessagesKey] = new JsonObject() };
         if (serverRefs.Count > 0)
         {

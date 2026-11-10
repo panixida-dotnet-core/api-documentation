@@ -212,6 +212,59 @@ public sealed class DocumentationTests
         first.ServerName.ShouldBe("primary");
     }
 
+    [Fact(DisplayName = "Channels reject configured servers with incompatible protocols")]
+    public void RejectsUnmatchedServerProtocols()
+    {
+        var descriptor = new ApiDocumentDescriptor("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi);
+        var message = new AsyncApiMessage("Event", new JsonObject());
+        var operation = new AsyncApiOperation("send", "events", AsyncApiAction.Send, message, "kafka");
+        var namedOperation = new AsyncApiOperation("send", "events", AsyncApiAction.Send, message, "kafka") { ServerName = "broker" };
+        var server = new AsyncApiServer("broker", "localhost:5672", "amqp");
+
+        var exception = Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [operation], [server]));
+
+        exception.Message.ShouldBe("No AsyncAPI server with protocol 'kafka' was registered.");
+        Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [namedOperation], [server]));
+    }
+
+    [Theory(DisplayName = "Channels and replies support omitted or empty server lists")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AllowsServerlessChannels(bool explicitEmptyServers)
+    {
+        var descriptor = new ApiDocumentDescriptor("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi);
+        var message = new AsyncApiMessage("Event", new JsonObject());
+        var operation = new AsyncApiOperation("send", "events", AsyncApiAction.Send, message, "kafka") { Reply = message };
+
+        var document = AsyncApiDocumentBuilder.Build(descriptor, [operation], explicitEmptyServers ? [] : null);
+
+        document["servers"]!.AsObject().ShouldBeEmpty();
+        document["channels"]!["events"]!["servers"].ShouldBeNull();
+        document["channels"]!["send.reply"]!["servers"].ShouldBeNull();
+    }
+
+    [Fact(DisplayName = "Channels and replies reference every matching server and exclude other protocols")]
+    public void SelectsServersMatchingChannelProtocol()
+    {
+        var descriptor = new ApiDocumentDescriptor("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi);
+        var message = new AsyncApiMessage("Event", new JsonObject());
+        var operation = new AsyncApiOperation("send", "events", AsyncApiAction.Send, message, "kafka") { Reply = message };
+        AsyncApiServer[] servers =
+        [
+            new("primary", "primary:9092", "kafka"),
+            new("secondary", "secondary:9092", "kafka"),
+            new("other", "other:5672", "amqp")
+        ];
+
+        var document = AsyncApiDocumentBuilder.Build(descriptor, [operation], servers);
+
+        foreach (var channel in document["channels"]!.AsObject())
+        {
+            channel.Value!["servers"]!.AsArray().Select(server => server!["$ref"]!.GetValue<string>())
+                .ShouldBe(["#/servers/primary", "#/servers/secondary"]);
+        }
+    }
+
     [Fact(DisplayName = "Embedded recursive payload schemas keep references inside their own schema")]
     public void RebasesEmbeddedSchemas()
     {
@@ -298,6 +351,52 @@ public sealed class DocumentationTests
         payload["examples"]![0]!["$ref"]!.GetValue<string>().ShouldBe("#original");
         payload[keyword]!.ToJsonString().ShouldContain("#/components/messages/Event/payload/schema");
     }
+
+    [Theory(DisplayName = "Identified schema resources preserve their local references at every nesting level")]
+    [InlineData("https://example.com/event", false)]
+    [InlineData("event", false)]
+    [InlineData("https://example.com/event", true)]
+    [InlineData("event", true)]
+    public void PreservesIdentifiedSchemaReferences(string id, bool nested)
+    {
+        var resource = JsonNode.Parse("""
+            {
+              "$ref": "#/$defs/value",
+              "$defs": {
+                "value": { "type": "string" },
+                "recursive": { "$ref": "#" },
+                "child": {
+                  "$id": "child",
+                  "$ref": "#/$defs/value",
+                  "$defs": { "value": { "type": "integer" } }
+                }
+              },
+              "properties": { "value": { "$ref": "#/$defs/value" } }
+            }
+            """)!;
+        resource["$id"] = id;
+        var schema = nested
+            ? new JsonObject
+            {
+                ["$ref"] = "#/$defs/value",
+                ["$defs"] = new JsonObject { ["value"] = new JsonObject { ["type"] = "string" } },
+                ["properties"] = new JsonObject { ["event"] = resource.DeepClone() }
+            }
+            : resource.DeepClone();
+        var operation = new AsyncApiOperation("send", "events", AsyncApiAction.Send,
+            new AsyncApiMessage("Event", schema), "kafka");
+
+        var document = AsyncApiDocumentBuilder.Build(new("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi), [operation]);
+
+        var payload = document["components"]!["messages"]!["Event"]!["payload"]!["schema"]!;
+        var actualResource = nested ? payload["properties"]!["event"] : payload;
+        JsonNode.DeepEquals(actualResource, resource).ShouldBeTrue();
+        if (nested)
+        {
+            payload["$ref"]!.GetValue<string>().ShouldBe("#/components/messages/Event/payload/schema/$defs/value");
+        }
+    }
+
     [Fact(DisplayName = "Schema rebasing preserves anchors and safely ignores non-schema metadata")]
     public void PreservesAnchorsAndOpaqueMetadata()
     {
@@ -316,6 +415,7 @@ public sealed class DocumentationTests
         payload["$ref"]!.GetValue<string>().ShouldBe("#anchor");
         payload["anyOf"]![0]!["$ref"]!.GetValue<bool>().ShouldBeFalse();
     }
+
     private sealed class Source(params ApiDocumentDescriptor[] documents) : IApiDocumentSource
     {
         public IReadOnlyCollection<ApiDocumentDescriptor> GetDocuments() => documents;

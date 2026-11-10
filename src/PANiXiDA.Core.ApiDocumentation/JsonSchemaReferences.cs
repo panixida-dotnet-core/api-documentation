@@ -25,6 +25,11 @@ internal static class JsonSchemaReferences
             return;
         }
 
+        if (properties.ContainsKey("$id"))
+        {
+            return;
+        }
+
         if (properties["$ref"] is JsonValue reference && reference.TryGetValue<string>(out var value) &&
             (value == "#" || value.StartsWith("#/", StringComparison.Ordinal)))
         {
