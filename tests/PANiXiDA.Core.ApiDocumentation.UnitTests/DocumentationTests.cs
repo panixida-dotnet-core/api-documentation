@@ -196,6 +196,31 @@ public sealed class DocumentationTests
             .ShouldBe($"#/servers/{pointer}");
     }
 
+    [Fact(DisplayName = "Message display titles preserve stable component names references and payload schemas")]
+    public void SeparatesMessageTitlesFromNames()
+    {
+        var schema = new JsonObject { ["type"] = "string" };
+        var message = new AsyncApiMessage("stable-message", schema, "Message description") { Title = "GetState request" };
+        var operation = new AsyncApiOperation("stable-operation", "events", AsyncApiAction.Receive, message, "kafka");
+
+        var document = AsyncApiDocumentBuilder.Build(new("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi), [operation]);
+
+        var component = document["components"]!["messages"]!["stable-message"]!;
+        component["name"]!.GetValue<string>().ShouldBe("stable-message");
+        component["title"]!.GetValue<string>().ShouldBe("GetState request");
+        component["summary"]!.GetValue<string>().ShouldBe("Message description");
+        JsonNode.DeepEquals(component["payload"]!["schema"], schema).ShouldBeTrue();
+        document["channels"]!["events"]!["messages"]!["stable-message"]!["$ref"]!.GetValue<string>()
+            .ShouldBe("#/components/messages/stable-message");
+        message.Title.ShouldBe("GetState request");
+        new AsyncApiMessage("untitled", schema) { Title = null }.Title.ShouldBeNull();
+        Should.Throw<ArgumentException>(() => new AsyncApiMessage("invalid", schema) { Title = " " });
+        var conflicting = new AsyncApiOperation("other", "events", AsyncApiAction.Send,
+            new AsyncApiMessage(message.Name, schema, message.Summary) { Title = "Another title" }, "kafka");
+        Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(
+            new("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi), [operation, conflicting]));
+    }
+
     [Fact(DisplayName = "Public metadata rejects missing required values")]
     public void MetadataGuards()
     {

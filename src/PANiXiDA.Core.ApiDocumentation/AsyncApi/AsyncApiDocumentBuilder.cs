@@ -194,6 +194,11 @@ public static class AsyncApiDocumentBuilder
             ["name"] = message.Name,
             ["payload"] = new JsonObject { ["schemaFormat"] = "application/schema+json;version=draft-2020-12", ["schema"] = payload }
         };
+        if (message.Title is not null)
+        {
+            node["title"] = message.Title;
+        }
+
         if (message.Summary is not null)
         {
             node["summary"] = message.Summary;

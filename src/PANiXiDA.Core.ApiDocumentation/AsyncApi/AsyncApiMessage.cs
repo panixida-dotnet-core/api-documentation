@@ -6,6 +6,7 @@ namespace PANiXiDA.Core.ApiDocumentation.AsyncApi;
 public sealed class AsyncApiMessage
 {
     private readonly JsonNode _schema;
+    private string? _title;
 
     /// <summary>Creates a message description.</summary>
     /// <param name="name">The stable component name.</param>
@@ -22,6 +23,21 @@ public sealed class AsyncApiMessage
 
     /// <summary>Gets the stable message name.</summary>
     public string Name { get; }
+
+    /// <summary>Gets or sets the optional display title without changing the stable message name.</summary>
+    public string? Title
+    {
+        get => _title;
+        init
+        {
+            if (value is not null)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(value);
+            }
+
+            _title = value;
+        }
+    }
 
     /// <summary>Gets an independent copy of the payload schema.</summary>
     public JsonNode Schema => _schema.DeepClone();
