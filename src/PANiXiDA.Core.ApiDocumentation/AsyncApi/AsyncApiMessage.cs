@@ -22,8 +22,10 @@ public sealed class AsyncApiMessage
 
     /// <summary>Gets the stable message name.</summary>
     public string Name { get; }
+
     /// <summary>Gets an independent copy of the payload schema.</summary>
     public JsonNode Schema => _schema.DeepClone();
+
     /// <summary>Gets the message summary.</summary>
     public string? Summary { get; }
 }

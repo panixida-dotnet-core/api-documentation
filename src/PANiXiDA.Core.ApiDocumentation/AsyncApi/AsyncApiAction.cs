@@ -5,6 +5,7 @@ public enum AsyncApiAction
 {
     /// <summary>The application sends a message.</summary>
     Send = 1,
+
     /// <summary>The application receives a message.</summary>
     Receive = 2
 }

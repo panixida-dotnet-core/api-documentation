@@ -24,8 +24,10 @@ public sealed class AsyncApiServer
 
     /// <summary>Gets the server identifier.</summary>
     public string Name { get; }
+
     /// <summary>Gets the server host.</summary>
     public string Host { get; }
+
     /// <summary>Gets the protocol name.</summary>
     public string Protocol { get; }
 }

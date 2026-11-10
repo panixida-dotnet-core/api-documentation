@@ -230,8 +230,11 @@ public static class AsyncApiDocumentBuilder
     private sealed class RenderingContext(JsonObject servers)
     {
         internal JsonObject Servers { get; } = servers;
+
         internal JsonObject Channels { get; } = [];
+
         internal JsonObject Messages { get; } = [];
+
         internal Dictionary<string, ChannelIdentity> ChannelIdentities { get; } = new(StringComparer.Ordinal);
     }
 }

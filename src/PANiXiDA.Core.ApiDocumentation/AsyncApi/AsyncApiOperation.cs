@@ -37,6 +37,7 @@ public sealed class AsyncApiOperation
 
     /// <summary>Gets the operation identifier.</summary>
     public string Id { get; }
+
     /// <summary>Gets or sets the display name. When omitted, the stable identifier is displayed.</summary>
     public string? Name
     {
@@ -51,26 +52,35 @@ public sealed class AsyncApiOperation
             _name = value;
         }
     }
+
     /// <summary>Gets the channel address.</summary>
     public string Address { get; }
+
     /// <summary>Gets the message direction.</summary>
     public AsyncApiAction Action { get; }
+
     /// <summary>Gets the application message.</summary>
     public AsyncApiMessage Message { get; }
+
     /// <summary>Gets the server protocol.</summary>
     public string Protocol { get; }
+
     /// <summary>Gets the operation summary.</summary>
     public string? Summary { get; }
+
     /// <summary>Gets an independent copy of the protocol bindings.</summary>
     public JsonObject? Bindings
     {
         get => (JsonObject?)_bindings?.DeepClone();
         init => _bindings = (JsonObject?)value?.DeepClone();
     }
+
     /// <summary>Gets the optional reply message.</summary>
     public AsyncApiMessage? Reply { get; init; }
+
     /// <summary>Gets whether bearer authentication is required.</summary>
     public bool RequiresBearer { get; init; }
+
     /// <summary>Gets the optional server name limiting this operation to one broker.</summary>
     public string? ServerName { get; init; }
 }

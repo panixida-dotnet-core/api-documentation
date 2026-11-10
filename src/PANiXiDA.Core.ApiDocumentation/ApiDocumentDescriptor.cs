@@ -48,16 +48,22 @@ public sealed class ApiDocumentDescriptor
 
     /// <summary>Gets the unique document name.</summary>
     public string Name { get; }
+
     /// <summary>Gets the API title.</summary>
     public string Title { get; }
+
     /// <summary>Gets the owning module.</summary>
     public string Module { get; }
+
     /// <summary>Gets the contract version.</summary>
     public string Version { get; }
+
     /// <summary>Gets the specification format.</summary>
     public ApiDocumentFormat Format { get; }
+
     /// <summary>Gets the document's application path.</summary>
     public string Path { get; }
+
     /// <summary>Gets whether this contract is deprecated.</summary>
     public bool Deprecated { get; }
 }

@@ -328,6 +328,7 @@ public sealed class DocumentationTests
 }
 
 internal sealed record Payload(Guid Id, string? Status);
+
 internal sealed record RecursivePayload(RecursivePayload? Next, IReadOnlyList<RecursivePayload>? Children);
 
 [JsonSerializable(typeof(Payload))]
