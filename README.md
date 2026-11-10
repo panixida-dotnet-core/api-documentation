@@ -50,6 +50,8 @@ For DI, register sources with `AddApiDocumentSource<TSource>()` and generated co
 
 Operations use the application's perspective: `Send` means publishing, `Receive` means consuming. Replies are explicit message contracts.
 
+Enum identifiers start at 1: `OpenApi = 1`, `AsyncApi = 2`; `Send = 1`, `Receive = 2`. Zero is invalid.
+
 ## Native AOT
 
 Schemas use registered `JsonSerializerContext` metadata. Missing types fail without a reflection fallback. Context settings must match transport JSON serialization; custom converters may need explicit schemas.

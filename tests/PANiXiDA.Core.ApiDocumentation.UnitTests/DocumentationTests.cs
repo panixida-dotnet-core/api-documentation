@@ -32,6 +32,7 @@ public sealed class DocumentationTests
         Should.Throw<ArgumentException>(() => new ApiDocumentDescriptor("name", "", "module", "1.0", ApiDocumentFormat.AsyncApi));
         Should.Throw<ArgumentException>(() => new ApiDocumentDescriptor("name", "Title", "", "1.0", ApiDocumentFormat.AsyncApi));
         Should.Throw<ArgumentException>(() => new ApiDocumentDescriptor("name", "Title", "module", "", ApiDocumentFormat.AsyncApi));
+        Should.Throw<ArgumentOutOfRangeException>(() => new ApiDocumentDescriptor("name", "Title", "module", "1.0", default));
         Should.Throw<ArgumentOutOfRangeException>(() => new ApiDocumentDescriptor("name", "Title", "module", "1.0", (ApiDocumentFormat)99));
         foreach (var path in new[] { "relative", "//host", "/../secret", "/bad path", "/bad\npath", "/{name}", "/a?x", "/a#x", "/a\\b" })
         {
@@ -177,6 +178,7 @@ public sealed class DocumentationTests
         Should.Throw<ArgumentException>(() => new AsyncApiOperation("id", "", AsyncApiAction.Send, message, "kafka"));
         Should.Throw<ArgumentNullException>(() => new AsyncApiOperation("id", "topic", AsyncApiAction.Send, null!, "kafka"));
         Should.Throw<ArgumentException>(() => new AsyncApiOperation("id", "topic", AsyncApiAction.Send, message, ""));
+        Should.Throw<ArgumentOutOfRangeException>(() => new AsyncApiOperation("id", "topic", default, message, "kafka"));
         Should.Throw<ArgumentOutOfRangeException>(() => new AsyncApiOperation("id", "topic", (AsyncApiAction)99, message, "kafka"));
         Should.Throw<ArgumentException>(() => new AsyncApiServer("", "host", "kafka"));
         Should.Throw<ArgumentException>(() => new AsyncApiServer("name", "", "kafka"));

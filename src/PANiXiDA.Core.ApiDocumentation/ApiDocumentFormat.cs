@@ -4,7 +4,7 @@ namespace PANiXiDA.Core.ApiDocumentation;
 public enum ApiDocumentFormat
 {
     /// <summary>An OpenAPI HTTP contract.</summary>
-    OpenApi,
+    OpenApi = 1,
     /// <summary>An AsyncAPI messaging contract.</summary>
-    AsyncApi
+    AsyncApi = 2
 }

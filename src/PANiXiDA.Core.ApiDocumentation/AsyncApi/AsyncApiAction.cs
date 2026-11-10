@@ -4,7 +4,7 @@ namespace PANiXiDA.Core.ApiDocumentation.AsyncApi;
 public enum AsyncApiAction
 {
     /// <summary>The application sends a message.</summary>
-    Send,
+    Send = 1,
     /// <summary>The application receives a message.</summary>
-    Receive
+    Receive = 2
 }
