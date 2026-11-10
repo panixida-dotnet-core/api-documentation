@@ -209,8 +209,17 @@ public static class AsyncApiDocumentBuilder
 
     private static JsonObject Reference(string path) => new() { ["$ref"] = path };
 
-    private static string EscapePointer(string value) =>
-        Uri.EscapeDataString(value.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal));
+    private static string EscapePointer(string value)
+    {
+        var escaped = Uri.EscapeDataString(value.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal));
+        foreach (var character in "!$&'()*+,;=:@?")
+        {
+            var literal = character.ToString();
+            escaped = escaped.Replace(Uri.EscapeDataString(literal), literal, StringComparison.Ordinal);
+        }
+
+        return escaped;
+    }
 
     private static string ComponentKey(string name)
     {

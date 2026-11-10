@@ -264,6 +264,7 @@ Every pull request and push to `main` runs formatting, tests, and mandatory Sona
 - Duplicate operation IDs, conflicting message definitions, incompatible channels, or unknown servers fail explicitly.
 - When servers are configured, every channel must match a server by protocol and optional `ServerName`. Omitting servers or passing an empty list remains supported.
 - Payload schemas declare JSON Schema draft 2020-12. Local references are rebased without rewriting literal data or resources with an explicit `$id`, including nested resources.
+- JSON Pointer references escape `~` and `/` and preserve legal URI fragment characters such as `@` and `:` so channel and reply links remain compatible with documentation viewers.
 - The builder implements the AsyncAPI subset used by Core adapters. It does not discover transports, host a UI, or generate clients.
 
 ### Package contents

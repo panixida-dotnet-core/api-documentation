@@ -169,6 +169,33 @@ public sealed class DocumentationTests
         payload["anyOf"]![2]!["$ref"]!.GetValue<string>().ShouldBe("https://example.com/schema");
     }
 
+    [Theory(DisplayName = "Channel server and reply references preserve legal URI fragment characters")]
+    [InlineData("hub.GetState@/hubs/state", "hub.GetState@~1hubs~1state")]
+    [InlineData("broker:events", "broker:events")]
+    [InlineData("events!$&'()*+,;=?", "events!$&'()*+,;=?")]
+    [InlineData("events/~", "events~1~0")]
+    [InlineData("events #%", "events%20%23%25")]
+    public void PreservesUriFragmentCharacters(string name, string pointer)
+    {
+        var descriptor = new ApiDocumentDescriptor("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi);
+        var message = new AsyncApiMessage("Event", new JsonObject());
+        var operation = new AsyncApiOperation(name, name, AsyncApiAction.Send, message, "kafka")
+        {
+            ServerName = name,
+            Reply = message
+        };
+
+        var document = AsyncApiDocumentBuilder.Build(descriptor, [operation], [new AsyncApiServer(name, "localhost:9092", "kafka")]);
+
+        var actual = document["operations"]![name]!;
+        actual["channel"]!["$ref"]!.GetValue<string>().ShouldBe($"#/channels/{pointer}:{pointer}");
+        actual["reply"]!["channel"]!["$ref"]!.GetValue<string>().ShouldBe($"#/channels/{pointer}.reply");
+        actual["reply"]!["messages"]![0]!["$ref"]!.GetValue<string>()
+            .ShouldBe($"#/channels/{pointer}.reply/messages/Event");
+        document["channels"]![name + ":" + name]!["servers"]![0]!["$ref"]!.GetValue<string>()
+            .ShouldBe($"#/servers/{pointer}");
+    }
+
     [Fact(DisplayName = "Public metadata rejects missing required values")]
     public void MetadataGuards()
     {
