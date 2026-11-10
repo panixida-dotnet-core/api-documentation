@@ -30,15 +30,21 @@ internal static class JsonSchemaReferences
             return;
         }
 
-        if (properties["$ref"] is JsonValue reference && reference.TryGetValue<string>(out var value) &&
-            (value == "#" || value.StartsWith("#/", StringComparison.Ordinal)))
-        {
-            properties["$ref"] = prefix + value[1..];
-        }
+        RebaseReference(properties, "$ref", prefix);
+        RebaseReference(properties, "$dynamicRef", prefix);
 
         foreach (var child in properties.SelectMany(ChildSchemas).OfType<JsonNode>())
         {
             Rebase(child, prefix);
+        }
+    }
+
+    private static void RebaseReference(JsonObject properties, string keyword, string prefix)
+    {
+        if (properties[keyword] is JsonValue reference && reference.TryGetValue<string>(out var value) &&
+            (value == "#" || value.StartsWith("#/", StringComparison.Ordinal)))
+        {
+            properties[keyword] = prefix + value[1..];
         }
     }
 

@@ -207,14 +207,16 @@ public sealed class DocumentationTests
             new ApiDocumentDescriptor("http", "HTTP", "module", "1.0", ApiDocumentFormat.OpenApi), []));
     }
 
-    [Fact(DisplayName = "Nested and recursive schema references remain rooted in their document component")]
-    public void RewritesSchemaReferences()
+    [Theory(DisplayName = "Nested and recursive schema references remain rooted in their document component")]
+    [InlineData("$ref")]
+    [InlineData("$dynamicRef")]
+    public void RewritesSchemaReferences(string referenceKeyword)
     {
         var schema = new JsonObject
         {
-            ["$ref"] = "#",
-            ["anyOf"] = new JsonArray(new JsonObject { ["$ref"] = "#/$defs/item" }, null,
-                new JsonObject { ["$ref"] = "https://example.com/schema" }),
+            [referenceKeyword] = "#",
+            ["anyOf"] = new JsonArray(new JsonObject { [referenceKeyword] = "#/$defs/item" }, null,
+                new JsonObject { [referenceKeyword] = "https://example.com/schema" }),
             ["$defs"] = new JsonObject { ["item"] = new JsonObject { ["type"] = "string" } }
         };
         var message = new AsyncApiMessage("item/~", schema);
@@ -222,9 +224,9 @@ public sealed class DocumentationTests
         var document = AsyncApiDocumentBuilder.Build(
             new ApiDocumentDescriptor("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi), [operation]);
         var payload = document["components"]!["messages"]!["item_002F_007E"]!["payload"]!["schema"]!;
-        payload["$ref"]!.GetValue<string>().ShouldBe("#/components/messages/item_002F_007E/payload/schema");
-        payload["anyOf"]![0]!["$ref"]!.GetValue<string>().ShouldEndWith("/$defs/item");
-        payload["anyOf"]![2]!["$ref"]!.GetValue<string>().ShouldBe("https://example.com/schema");
+        payload[referenceKeyword]!.GetValue<string>().ShouldBe("#/components/messages/item_002F_007E/payload/schema");
+        payload["anyOf"]![0]![referenceKeyword]!.GetValue<string>().ShouldBe("#/components/messages/item_002F_007E/payload/schema/$defs/item");
+        payload["anyOf"]![2]![referenceKeyword]!.GetValue<string>().ShouldBe("https://example.com/schema");
     }
 
     [Theory(DisplayName = "Channel server and reply references preserve legal URI fragment characters")]
@@ -445,7 +447,7 @@ public sealed class DocumentationTests
         var schema = new JsonObject
         {
             [keyword] = child,
-            ["const"] = new JsonObject { ["$ref"] = "#original" },
+            ["const"] = new JsonObject { ["$ref"] = "#original", ["$dynamicRef"] = "#/$defs/value" },
             ["default"] = new JsonObject { ["$ref"] = "#original" },
             ["enum"] = new JsonArray(new JsonObject { ["$ref"] = "#original" }),
             ["examples"] = new JsonArray(new JsonObject { ["$ref"] = "#original" })
@@ -455,6 +457,7 @@ public sealed class DocumentationTests
             [new AsyncApiOperation("send", "topic", AsyncApiAction.Send, message, "kafka")]);
         var payload = document["components"]!["messages"]!["Event"]!["payload"]!["schema"]!;
         payload["const"]!["$ref"]!.GetValue<string>().ShouldBe("#original");
+        payload["const"]!["$dynamicRef"]!.GetValue<string>().ShouldBe("#/$defs/value");
         payload["default"]!["$ref"]!.GetValue<string>().ShouldBe("#original");
         payload["enum"]![0]!["$ref"]!.GetValue<string>().ShouldBe("#original");
         payload["examples"]![0]!["$ref"]!.GetValue<string>().ShouldBe("#original");
@@ -471,12 +474,14 @@ public sealed class DocumentationTests
         var resource = JsonNode.Parse("""
             {
               "$ref": "#/$defs/value",
+              "$dynamicRef": "#/$defs/value",
               "$defs": {
                 "value": { "type": "string" },
                 "recursive": { "$ref": "#" },
                 "child": {
                   "$id": "child",
                   "$ref": "#/$defs/value",
+                  "$dynamicRef": "#/$defs/value",
                   "$defs": { "value": { "type": "integer" } }
                 }
               },
@@ -512,17 +517,23 @@ public sealed class DocumentationTests
         var schema = new JsonObject
         {
             ["$ref"] = "#anchor",
+            ["$dynamicRef"] = "#dynamic-anchor",
             ["properties"] = null,
             ["allOf"] = null,
-            ["anyOf"] = new JsonArray(new JsonObject { ["$ref"] = false }),
-            ["$defs"] = new JsonObject { ["value"] = new JsonObject { ["$anchor"] = "anchor", ["type"] = "string" } }
+            ["anyOf"] = new JsonArray(new JsonObject { ["$ref"] = false, ["$dynamicRef"] = false }),
+            ["$defs"] = new JsonObject
+            {
+                ["value"] = new JsonObject { ["$anchor"] = "anchor", ["$dynamicAnchor"] = "dynamic-anchor", ["type"] = "string" }
+            }
         };
         var message = new AsyncApiMessage("Event", schema);
         var document = AsyncApiDocumentBuilder.Build(new("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi),
             [new AsyncApiOperation("send", "topic", AsyncApiAction.Send, message, "kafka")]);
         var payload = document["components"]!["messages"]!["Event"]!["payload"]!["schema"]!;
         payload["$ref"]!.GetValue<string>().ShouldBe("#anchor");
+        payload["$dynamicRef"]!.GetValue<string>().ShouldBe("#dynamic-anchor");
         payload["anyOf"]![0]!["$ref"]!.GetValue<bool>().ShouldBeFalse();
+        payload["anyOf"]![0]!["$dynamicRef"]!.GetValue<bool>().ShouldBeFalse();
     }
 
     private sealed class Source(params ApiDocumentDescriptor[] documents) : IApiDocumentSource
