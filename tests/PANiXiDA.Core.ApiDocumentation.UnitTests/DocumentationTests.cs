@@ -134,6 +134,9 @@ public sealed class DocumentationTests
         var conflicting = new AsyncApiOperation("other", "topic", AsyncApiAction.Send,
             new AsyncApiMessage("event", new JsonObject { ["type"] = "integer" }), "kafka");
         Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [send, conflicting]));
+        var reply = new AsyncApiOperation("z", "topic", AsyncApiAction.Receive, message, "kafka", reply: message);
+        var collidingChannel = new AsyncApiOperation("a", "z.reply", AsyncApiAction.Send, message, "kafka");
+        Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [collidingChannel, reply]));
         var server = new AsyncApiServer("kafka", "localhost:9092", "kafka");
         Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [], [server, server]));
         Should.Throw<ArgumentNullException>(() => AsyncApiDocumentBuilder.Build(null!, []));

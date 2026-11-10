@@ -142,7 +142,7 @@ public static class AsyncApiDocumentBuilder
         var serverRefs = new JsonArray();
         foreach (var server in servers)
         {
-            if (server.Value?["protocol"]?.GetValue<string>() == protocol && (serverName is null || server.Key == serverName))
+            if (server.Value!["protocol"]!.GetValue<string>() == protocol && (serverName is null || server.Key == serverName))
             {
                 serverRefs.Add((JsonNode)Reference($"#/servers/{EscapePointer(server.Key)}"));
             }
