@@ -15,7 +15,7 @@ public sealed class ApiSchemaRegistry
     public ApiSchemaRegistry(IEnumerable<JsonSerializerContext> contexts)
     {
         ArgumentNullException.ThrowIfNull(contexts);
-        _contexts = contexts.ToArray();
+        _contexts = [.. contexts];
         if (_contexts.Any(context => context is null))
         {
             throw new ArgumentException("JSON contexts must not contain null.", nameof(contexts));
@@ -39,7 +39,7 @@ public sealed class ApiSchemaRegistry
             if (context.GetTypeInfo(type) is JsonTypeInfo typeInfo)
             {
                 var schema = typeInfo.GetJsonSchemaAsNode();
-                RebaseReferences(schema, referencePrefix);
+                JsonSchemaReferences.Rebase(schema, referencePrefix);
                 return schema;
             }
         }
@@ -47,34 +47,5 @@ public sealed class ApiSchemaRegistry
         throw new InvalidOperationException(
             $"Source-generated JSON metadata was not registered for '{type.FullName}'. " +
             "Register a JsonSerializerContext containing the payload with AddApiDocumentationSchemas.");
-    }
-
-    private static void RebaseReferences(JsonNode node, string prefix)
-    {
-        if (node is JsonObject properties)
-        {
-            if (properties["$ref"] is JsonValue reference && reference.TryGetValue<string>(out var value) && value.StartsWith('#'))
-            {
-                properties["$ref"] = prefix + value[1..];
-            }
-
-            foreach (var property in properties.ToArray())
-            {
-                if (property.Value is not null)
-                {
-                    RebaseReferences(property.Value, prefix);
-                }
-            }
-        }
-        else if (node is JsonArray items)
-        {
-            foreach (var item in items)
-            {
-                if (item is not null)
-                {
-                    RebaseReferences(item, prefix);
-                }
-            }
-        }
     }
 }

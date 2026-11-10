@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using System.Text.Json.Nodes;
 
 namespace PANiXiDA.Core.ApiDocumentation.AsyncApi;
@@ -5,6 +7,8 @@ namespace PANiXiDA.Core.ApiDocumentation.AsyncApi;
 /// <summary>Builds AsyncAPI 3.0 documents from transport-owned metadata.</summary>
 public static class AsyncApiDocumentBuilder
 {
+    private const string Messages = "messages";
+
     /// <summary>Builds a deterministic document with shared message components and optional replies.</summary>
     /// <param name="descriptor">The document identity.</param>
     /// <param name="operations">The operations belonging to this module and version.</param>
@@ -20,10 +24,8 @@ public static class AsyncApiDocumentBuilder
             throw new ArgumentException("An AsyncAPI document descriptor is required.", nameof(descriptor));
         }
 
-        var channels = new JsonObject();
+        var rendering = new RenderingContext(CreateServers(servers));
         var operationNodes = new JsonObject();
-        var messages = new JsonObject();
-        var serverNodes = CreateServers(servers);
         var requiresBearer = false;
         foreach (var operation in operations.OrderBy(operation => operation.Id, StringComparer.Ordinal))
         {
@@ -32,58 +34,11 @@ public static class AsyncApiDocumentBuilder
                 throw new InvalidOperationException($"AsyncAPI operation '{operation.Id}' is registered more than once.");
             }
 
-            var channelKey = operation.ServerName is null ? operation.Address : operation.ServerName + ":" + operation.Address;
-            var channel = GetChannel(channels, channelKey, operation.Address, operation.Protocol, serverNodes, operation.ServerName);
-            AddMessage(messages, operation.Message);
-            var channelMessages = (JsonObject)channel["messages"]!;
-            channelMessages[operation.Message.Name] = Reference($"#/components/messages/{EscapePointer(operation.Message.Name)}");
-            var node = new JsonObject
-            {
-                ["action"] = operation.Action == AsyncApiAction.Send ? "send" : "receive",
-                ["title"] = operation.Id,
-                ["channel"] = Reference($"#/channels/{EscapePointer(channelKey)}"),
-                ["messages"] = new JsonArray(Reference(
-                    $"#/channels/{EscapePointer(channelKey)}/messages/{EscapePointer(operation.Message.Name)}"))
-            };
-            if (operation.Summary is not null)
-            {
-                node["summary"] = operation.Summary;
-            }
-
-            if (operation.Bindings is { } bindings)
-            {
-                node["bindings"] = bindings;
-            }
-
-            if (operation.Reply is { } reply)
-            {
-                AddMessage(messages, reply);
-                var replyKey = operation.Id + ".reply";
-                if (channels.ContainsKey(replyKey))
-                {
-                    throw new InvalidOperationException($"AsyncAPI reply channel '{replyKey}' conflicts with another channel.");
-                }
-
-                var replyChannel = GetChannel(channels, replyKey, operation.Address, operation.Protocol, serverNodes, operation.ServerName);
-                replyChannel["messages"]![reply.Name] = Reference($"#/components/messages/{EscapePointer(reply.Name)}");
-                node["reply"] = new JsonObject
-                {
-                    ["channel"] = Reference($"#/channels/{EscapePointer(replyKey)}"),
-                    ["messages"] = new JsonArray(Reference(
-                        $"#/channels/{EscapePointer(replyKey)}/messages/{EscapePointer(reply.Name)}"))
-                };
-            }
-
-            if (operation.RequiresBearer)
-            {
-                requiresBearer = true;
-                node["security"] = new JsonArray(Reference("#/components/securitySchemes/Bearer"));
-            }
-
-            operationNodes[operation.Id] = node;
+            operationNodes[operation.Id] = CreateOperation(operation, rendering);
+            requiresBearer |= operation.RequiresBearer;
         }
 
-        var components = new JsonObject { ["messages"] = messages };
+        var components = new JsonObject { [Messages] = rendering.Messages };
         if (requiresBearer)
         {
             components["securitySchemes"] = new JsonObject
@@ -108,10 +63,67 @@ public static class AsyncApiDocumentBuilder
             ["asyncapi"] = "3.0.0",
             ["info"] = info,
             ["defaultContentType"] = "application/json",
-            ["servers"] = serverNodes,
-            ["channels"] = channels,
+            ["servers"] = rendering.Servers,
+            ["channels"] = rendering.Channels,
             ["operations"] = operationNodes,
             ["components"] = components
+        };
+    }
+
+    private static JsonObject CreateOperation(AsyncApiOperation operation, RenderingContext rendering)
+    {
+        var channelKey = operation.ServerName is null ? operation.Address : operation.ServerName + ":" + operation.Address;
+        var channel = GetChannel(rendering, channelKey, operation.Address, operation.Protocol, operation.ServerName);
+        AddMessage(rendering.Messages, operation.Message);
+        var messageKey = ComponentKey(operation.Message.Name);
+        channel[Messages]![messageKey] = Reference($"#/components/messages/{messageKey}");
+        var node = new JsonObject
+        {
+            ["action"] = operation.Action == AsyncApiAction.Send ? "send" : "receive",
+            ["title"] = operation.Id,
+            ["channel"] = Reference($"#/channels/{EscapePointer(channelKey)}"),
+            [Messages] = new JsonArray(Reference(
+                $"#/channels/{EscapePointer(channelKey)}/messages/{messageKey}"))
+        };
+        if (operation.Summary is not null)
+        {
+            node["summary"] = operation.Summary;
+        }
+
+        if (operation.Bindings is { } bindings)
+        {
+            node["bindings"] = bindings;
+        }
+
+        if (operation.Reply is { } reply)
+        {
+            node["reply"] = CreateReply(operation, reply, rendering);
+        }
+
+        if (operation.RequiresBearer)
+        {
+            node["security"] = new JsonArray(Reference("#/components/securitySchemes/Bearer"));
+        }
+
+        return node;
+    }
+
+    private static JsonObject CreateReply(AsyncApiOperation operation, AsyncApiMessage reply, RenderingContext rendering)
+    {
+        AddMessage(rendering.Messages, reply);
+        var messageKey = ComponentKey(reply.Name);
+        var key = operation.Id + ".reply";
+        if (rendering.Channels.ContainsKey(key))
+        {
+            throw new InvalidOperationException($"AsyncAPI reply channel '{key}' conflicts with another channel.");
+        }
+
+        var channel = GetChannel(rendering, key, operation.Address, operation.Protocol, operation.ServerName);
+        channel[Messages]![messageKey] = Reference($"#/components/messages/{messageKey}");
+        return new JsonObject
+        {
+            ["channel"] = Reference($"#/channels/{EscapePointer(key)}"),
+            [Messages] = new JsonArray(Reference($"#/channels/{EscapePointer(key)}/messages/{messageKey}"))
         };
     }
 
@@ -131,21 +143,24 @@ public static class AsyncApiDocumentBuilder
         return result;
     }
 
-    private static JsonObject GetChannel(JsonObject channels, string key, string address, string protocol,
-        JsonObject servers, string? serverName)
+    private static JsonObject GetChannel(RenderingContext rendering, string key, string address, string protocol, string? serverName)
     {
-        if (channels[key] is JsonObject existing)
+        var identity = new ChannelIdentity(address, protocol, serverName);
+        if (rendering.ChannelIdentities.TryGetValue(key, out var existing))
         {
-            return existing;
+            if (existing != identity)
+            {
+                throw new InvalidOperationException($"AsyncAPI channel '{key}' has conflicting address, protocol or server metadata.");
+            }
+
+            return (JsonObject)rendering.Channels[key]!;
         }
 
         var serverRefs = new JsonArray();
-        foreach (var server in servers)
+        foreach (var server in rendering.Servers.Where(server => server.Value!["protocol"]!.GetValue<string>() == protocol &&
+                     (serverName is null || server.Key == serverName)))
         {
-            if (server.Value!["protocol"]!.GetValue<string>() == protocol && (serverName is null || server.Key == serverName))
-            {
-                serverRefs.Add((JsonNode)Reference($"#/servers/{EscapePointer(server.Key)}"));
-            }
+            serverRefs.Add((JsonNode)Reference($"#/servers/{EscapePointer(server.Key)}"));
         }
 
         if (serverName is not null && serverRefs.Count == 0)
@@ -153,79 +168,70 @@ public static class AsyncApiDocumentBuilder
             throw new InvalidOperationException($"AsyncAPI server '{serverName}' with protocol '{protocol}' was not registered.");
         }
 
-        var channel = new JsonObject { ["address"] = address, ["messages"] = new JsonObject() };
+        var channel = new JsonObject { ["address"] = address, [Messages] = new JsonObject() };
         if (serverRefs.Count > 0)
         {
             channel["servers"] = serverRefs;
         }
 
-        channels[key] = channel;
+        rendering.Channels[key] = channel;
+        rendering.ChannelIdentities.Add(key, identity);
         return channel;
     }
 
     private static void AddMessage(JsonObject messages, AsyncApiMessage message)
     {
         var payload = message.Schema;
-        RewriteReferences(payload, $"#/components/messages/{EscapePointer(message.Name)}/payload/schema");
+        var key = ComponentKey(message.Name);
+        JsonSchemaReferences.Rebase(payload, $"#/components/messages/{key}/payload/schema");
         var node = new JsonObject
         {
             ["name"] = message.Name,
-            ["payload"] = new JsonObject
-            {
-                ["schemaFormat"] = "application/schema+json;version=draft-2020-12",
-                ["schema"] = payload
-            }
+            ["payload"] = new JsonObject { ["schemaFormat"] = "application/schema+json;version=draft-2020-12", ["schema"] = payload }
         };
         if (message.Summary is not null)
         {
             node["summary"] = message.Summary;
         }
 
-        if (messages[message.Name] is { } existing && !JsonNode.DeepEquals(existing, node))
+        if (messages[key] is { } existing && !JsonNode.DeepEquals(existing, node))
         {
             throw new InvalidOperationException($"AsyncAPI message '{message.Name}' has conflicting definitions.");
         }
 
-        messages[message.Name] = node;
+        messages[key] = node;
     }
 
-    private static void RewriteReferences(JsonNode node, string prefix)
-    {
-        if (node is JsonObject properties)
-        {
-            if (properties["$ref"] is JsonValue reference &&
-                reference.TryGetValue<string>(out var value) && value.StartsWith('#'))
-            {
-                properties["$ref"] = prefix + value[1..];
-            }
+    private static JsonObject Reference(string path) => new() { ["$ref"] = path };
 
-            foreach (var property in properties.ToArray())
+    private static string EscapePointer(string value) =>
+        Uri.EscapeDataString(value.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal));
+
+    private static string ComponentKey(string name)
+    {
+        var result = new StringBuilder();
+        foreach (var character in name)
+        {
+            if (char.IsAsciiLetterOrDigit(character) || character is '.' or '-')
             {
-                if (property.Value is not null)
-                {
-                    RewriteReferences(property.Value, prefix);
-                }
+                result.Append(character);
+            }
+            else
+            {
+                result.Append('_').Append(((int)character).ToString("X4", CultureInfo.InvariantCulture));
             }
         }
-        else if (node is JsonArray items)
-        {
-            foreach (var item in items)
-            {
-                if (item is not null)
-                {
-                    RewriteReferences(item, prefix);
-                }
-            }
-        }
+
+        return result.ToString();
     }
 
-    private static JsonObject Reference(string path)
-    {
-        return new JsonObject { ["$ref"] = path };
-    }
+    private sealed record ChannelIdentity(string Address, string Protocol, string? Server);
 
-    private static string EscapePointer(string value)
+    private sealed class RenderingContext(JsonObject servers)
     {
-        return Uri.EscapeDataString(value.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal));
+        internal JsonObject Servers { get; } = servers;
+        internal JsonObject Channels { get; } = new();
+        internal JsonObject Messages { get; } = new();
+        internal Dictionary<string, ChannelIdentity> ChannelIdentities { get; } = new(StringComparer.Ordinal);
     }
 }

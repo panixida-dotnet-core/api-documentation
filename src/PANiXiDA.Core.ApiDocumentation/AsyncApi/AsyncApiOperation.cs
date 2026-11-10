@@ -14,14 +14,8 @@ public sealed class AsyncApiOperation
     /// <param name="message">The application message.</param>
     /// <param name="protocol">The server protocol.</param>
     /// <param name="summary">The optional operation summary.</param>
-    /// <param name="bindings">Optional protocol-specific operation bindings.</param>
-    /// <param name="reply">The optional reply or stream-item message.</param>
-    /// <param name="requiresBearer">Whether the operation requires bearer authentication.</param>
-    /// <param name="serverName">An optional server name isolating channels on named brokers.</param>
     public AsyncApiOperation(string id, string address, AsyncApiAction action,
-        AsyncApiMessage message, string protocol, string? summary = null,
-        JsonObject? bindings = null, AsyncApiMessage? reply = null, bool requiresBearer = false,
-        string? serverName = null)
+        AsyncApiMessage message, string protocol, string? summary = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(address);
@@ -38,10 +32,6 @@ public sealed class AsyncApiOperation
         Message = message;
         Protocol = protocol;
         Summary = summary;
-        _bindings = (JsonObject?)bindings?.DeepClone();
-        Reply = reply;
-        RequiresBearer = requiresBearer;
-        ServerName = serverName;
     }
 
     /// <summary>Gets the operation identifier.</summary>
@@ -57,11 +47,15 @@ public sealed class AsyncApiOperation
     /// <summary>Gets the operation summary.</summary>
     public string? Summary { get; }
     /// <summary>Gets an independent copy of the protocol bindings.</summary>
-    public JsonObject? Bindings => (JsonObject?)_bindings?.DeepClone();
+    public JsonObject? Bindings
+    {
+        get => (JsonObject?)_bindings?.DeepClone();
+        init => _bindings = (JsonObject?)value?.DeepClone();
+    }
     /// <summary>Gets the optional reply message.</summary>
-    public AsyncApiMessage? Reply { get; }
+    public AsyncApiMessage? Reply { get; init; }
     /// <summary>Gets whether bearer authentication is required.</summary>
-    public bool RequiresBearer { get; }
+    public bool RequiresBearer { get; init; }
     /// <summary>Gets the optional server name limiting this operation to one broker.</summary>
-    public string? ServerName { get; }
+    public string? ServerName { get; init; }
 }

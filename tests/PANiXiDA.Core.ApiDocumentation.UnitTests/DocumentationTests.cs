@@ -95,7 +95,8 @@ public sealed class DocumentationTests
         var message = new AsyncApiMessage("StateChanged", schema, "State update");
         var bindings = new JsonObject { ["x-signalr"] = new JsonObject { ["target"] = "GetState" } };
         var operation = new AsyncApiOperation("GetState", "/hubs/state", AsyncApiAction.Receive, message, "signalr",
-            "Read state", bindings, message, true);
+            "Read state")
+        { Bindings = bindings, Reply = message, RequiresBearer = true };
         var document = AsyncApiDocumentBuilder.Build(descriptor, [operation],
             [new AsyncApiServer("signalr", "localhost:5000", "signalr"), new AsyncApiServer("kafka", "localhost:9092", "kafka")]);
 
@@ -134,7 +135,7 @@ public sealed class DocumentationTests
         var conflicting = new AsyncApiOperation("other", "topic", AsyncApiAction.Send,
             new AsyncApiMessage("event", new JsonObject { ["type"] = "integer" }), "kafka");
         Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [send, conflicting]));
-        var reply = new AsyncApiOperation("z", "topic", AsyncApiAction.Receive, message, "kafka", reply: message);
+        var reply = new AsyncApiOperation("z", "topic", AsyncApiAction.Receive, message, "kafka") { Reply = message };
         var collidingChannel = new AsyncApiOperation("a", "z.reply", AsyncApiAction.Send, message, "kafka");
         Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [collidingChannel, reply]));
         var server = new AsyncApiServer("kafka", "localhost:9092", "kafka");
@@ -159,8 +160,8 @@ public sealed class DocumentationTests
         var operation = new AsyncApiOperation("send", "topic", AsyncApiAction.Send, message, "kafka");
         var document = AsyncApiDocumentBuilder.Build(
             new ApiDocumentDescriptor("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi), [operation]);
-        var payload = document["components"]!["messages"]!["item/~"]!["payload"]!["schema"]!;
-        payload["$ref"]!.GetValue<string>().ShouldBe("#/components/messages/item~1~0/payload/schema");
+        var payload = document["components"]!["messages"]!["item_002F_007E"]!["payload"]!["schema"]!;
+        payload["$ref"]!.GetValue<string>().ShouldBe("#/components/messages/item_002F_007E/payload/schema");
         payload["anyOf"]![0]!["$ref"]!.GetValue<string>().ShouldEndWith("/$defs/item");
         payload["anyOf"]![2]!["$ref"]!.GetValue<string>().ShouldBe("https://example.com/schema");
     }
@@ -169,6 +170,7 @@ public sealed class DocumentationTests
     public void MetadataGuards()
     {
         var message = new AsyncApiMessage("event", new JsonObject());
+        new AsyncApiOperation("empty", "topic", AsyncApiAction.Send, message, "kafka") { Bindings = null }.Bindings.ShouldBeNull();
         Should.Throw<ArgumentException>(() => new AsyncApiMessage("", new JsonObject()));
         Should.Throw<ArgumentNullException>(() => new AsyncApiMessage("name", null!));
         Should.Throw<ArgumentException>(() => new AsyncApiOperation("", "topic", AsyncApiAction.Send, message, "kafka"));
@@ -195,8 +197,8 @@ public sealed class DocumentationTests
     {
         var descriptor = new ApiDocumentDescriptor("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi);
         var message = new AsyncApiMessage("event", new JsonObject { ["type"] = "string" });
-        var first = new AsyncApiOperation("first", "events", AsyncApiAction.Send, message, "kafka", serverName: "primary");
-        var second = new AsyncApiOperation("second", "events", AsyncApiAction.Receive, message, "kafka", serverName: "external");
+        var first = new AsyncApiOperation("first", "events", AsyncApiAction.Send, message, "kafka") { ServerName = "primary" };
+        var second = new AsyncApiOperation("second", "events", AsyncApiAction.Receive, message, "kafka") { ServerName = "external" };
         var document = AsyncApiDocumentBuilder.Build(descriptor, [first, second],
             [new AsyncApiServer("primary", "primary:9092", "kafka"), new AsyncApiServer("external", "external:9092", "kafka")]);
         document["channels"]!.AsObject().Count.ShouldBe(2);
@@ -216,6 +218,100 @@ public sealed class DocumentationTests
         Should.Throw<ArgumentException>(() => registry.GetSchema(typeof(Payload), "external"));
     }
 
+    [Fact(DisplayName = "Channels reject protocol conflicts and reply collisions in either registration order")]
+    public void RejectsIncompatibleChannelReuse()
+    {
+        var descriptor = new ApiDocumentDescriptor("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi);
+        var message = new AsyncApiMessage("Event", new JsonObject());
+        var send = new AsyncApiOperation("a", "events", AsyncApiAction.Send, message, "kafka") { Reply = message };
+        var otherProtocol = new AsyncApiOperation("z", "events", AsyncApiAction.Send, message, "amqp");
+        Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [send, otherProtocol]));
+        var collidingAddress = new AsyncApiOperation("z", "a.reply", AsyncApiAction.Send, message, "kafka");
+        Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [send, collidingAddress]));
+    }
+
+    [Fact(DisplayName = "Message component identifiers are valid and collision-free for arbitrary display names")]
+    public void EncodesMessageComponentKeys()
+    {
+        string[] names = ["a.b-c", "a_b", "a/b", "a_002Fb", "Event<T>", "Событие", "event name"];
+        var operations = names.Select((name, index) => new AsyncApiOperation("send" + index, "topic", AsyncApiAction.Send,
+            new AsyncApiMessage(name, new JsonObject()), "kafka"));
+        var document = AsyncApiDocumentBuilder.Build(new("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi), operations);
+        var messages = document["components"]!["messages"]!.AsObject();
+        messages.Count.ShouldBe(names.Length);
+        messages.All(message => message.Key.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_')).ShouldBeTrue();
+        messages.Select(message => message.Value!["name"]!.GetValue<string>()).Order().ShouldBe(names.Order());
+    }
+
+    [Theory(DisplayName = "Reference rebasing traverses schema keywords while preserving literal instance values")]
+    [InlineData("properties", "map")]
+    [InlineData("patternProperties", "map")]
+    [InlineData("$defs", "map")]
+    [InlineData("definitions", "map")]
+    [InlineData("dependentSchemas", "map")]
+    [InlineData("dependencies", "map")]
+    [InlineData("allOf", "array")]
+    [InlineData("anyOf", "array")]
+    [InlineData("oneOf", "array")]
+    [InlineData("prefixItems", "array")]
+    [InlineData("items", "array")]
+    [InlineData("not", "single")]
+    [InlineData("if", "single")]
+    [InlineData("then", "single")]
+    [InlineData("else", "single")]
+    [InlineData("contains", "single")]
+    [InlineData("propertyNames", "single")]
+    [InlineData("additionalProperties", "single")]
+    [InlineData("unevaluatedProperties", "single")]
+    [InlineData("items", "single")]
+    [InlineData("unevaluatedItems", "single")]
+    [InlineData("additionalItems", "single")]
+    [InlineData("contentSchema", "single")]
+    public void PreservesLiteralReferences(string keyword, string kind)
+    {
+        var reference = new JsonObject { ["$ref"] = "#" };
+        JsonNode child = kind switch
+        {
+            "map" => new JsonObject { ["value"] = reference },
+            "array" => new JsonArray(reference, null, JsonValue.Create(true)),
+            _ => reference
+        };
+        var schema = new JsonObject
+        {
+            [keyword] = child,
+            ["const"] = new JsonObject { ["$ref"] = "#original" },
+            ["default"] = new JsonObject { ["$ref"] = "#original" },
+            ["enum"] = new JsonArray(new JsonObject { ["$ref"] = "#original" }),
+            ["examples"] = new JsonArray(new JsonObject { ["$ref"] = "#original" })
+        };
+        var message = new AsyncApiMessage("Event", schema);
+        var document = AsyncApiDocumentBuilder.Build(new("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi),
+            [new AsyncApiOperation("send", "topic", AsyncApiAction.Send, message, "kafka")]);
+        var payload = document["components"]!["messages"]!["Event"]!["payload"]!["schema"]!;
+        payload["const"]!["$ref"]!.GetValue<string>().ShouldBe("#original");
+        payload["default"]!["$ref"]!.GetValue<string>().ShouldBe("#original");
+        payload["enum"]![0]!["$ref"]!.GetValue<string>().ShouldBe("#original");
+        payload["examples"]![0]!["$ref"]!.GetValue<string>().ShouldBe("#original");
+        payload[keyword]!.ToJsonString().ShouldContain("#/components/messages/Event/payload/schema");
+    }
+    [Fact(DisplayName = "Schema rebasing preserves anchors and safely ignores non-schema metadata")]
+    public void PreservesAnchorsAndOpaqueMetadata()
+    {
+        var schema = new JsonObject
+        {
+            ["$ref"] = "#anchor",
+            ["properties"] = null,
+            ["allOf"] = null,
+            ["anyOf"] = new JsonArray(new JsonObject { ["$ref"] = false }),
+            ["$defs"] = new JsonObject { ["value"] = new JsonObject { ["$anchor"] = "anchor", ["type"] = "string" } }
+        };
+        var message = new AsyncApiMessage("Event", schema);
+        var document = AsyncApiDocumentBuilder.Build(new("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi),
+            [new AsyncApiOperation("send", "topic", AsyncApiAction.Send, message, "kafka")]);
+        var payload = document["components"]!["messages"]!["Event"]!["payload"]!["schema"]!;
+        payload["$ref"]!.GetValue<string>().ShouldBe("#anchor");
+        payload["anyOf"]![0]!["$ref"]!.GetValue<bool>().ShouldBeFalse();
+    }
     private sealed class Source(params ApiDocumentDescriptor[] documents) : IApiDocumentSource
     {
         public IReadOnlyCollection<ApiDocumentDescriptor> GetDocuments() => documents;

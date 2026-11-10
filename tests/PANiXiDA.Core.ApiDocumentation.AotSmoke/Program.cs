@@ -1,5 +1,4 @@
-using System.Text.Json.Serialization;
-
+using PANiXiDA.Core.ApiDocumentation.AotSmoke;
 using PANiXiDA.Core.ApiDocumentation;
 using PANiXiDA.Core.ApiDocumentation.AsyncApi;
 
@@ -14,9 +13,3 @@ if (document["components"]!["messages"]!["StateChanged"]!["payload"]!["schema"]!
 }
 
 Console.WriteLine(document.ToJsonString());
-
-internal sealed record StateChanged(Guid Id, string? Status);
-
-[JsonSerializable(typeof(StateChanged))]
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
-internal sealed partial class SmokeJsonContext : JsonSerializerContext;

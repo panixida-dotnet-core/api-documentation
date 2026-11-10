@@ -10,7 +10,7 @@ public sealed class ApiDocumentCatalog
     public ApiDocumentCatalog(IEnumerable<IApiDocumentSource> sources)
     {
         ArgumentNullException.ThrowIfNull(sources);
-        _sources = sources.ToArray();
+        _sources = [.. sources];
         if (_sources.Any(source => source is null))
         {
             throw new ArgumentException("Document sources must not contain null.", nameof(sources));
@@ -37,7 +37,7 @@ public sealed class ApiDocumentCatalog
             }
         }
 
-        return documents.OrderBy(document => document.Module, StringComparer.Ordinal)
-            .ThenBy(document => document.Name, StringComparer.Ordinal).ToArray();
+        return [.. documents.OrderBy(document => document.Module, StringComparer.Ordinal)
+            .ThenBy(document => document.Name, StringComparer.Ordinal)];
     }
 }
