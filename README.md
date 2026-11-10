@@ -262,6 +262,7 @@ Every pull request and push to `main` runs formatting, tests, and mandatory Sona
 
 - `OpenApi = 1`, `AsyncApi = 2`; `Send = 1`, `Receive = 2`. Zero is invalid.
 - `AsyncApiMessage.Title` supplies an optional display heading independently of `Name`, component keys, references, and payload schemas.
+- Requests and replies share their operation's channel. Each operation explicitly lists its request and reply messages; replies do not create synthetic channels.
 - Duplicate operation IDs, conflicting message definitions, incompatible channels, or unknown servers fail explicitly.
 - When servers are configured, every channel must match a server by protocol and optional `ServerName`. Omitting servers or passing an empty list remains supported.
 - Payload schemas declare JSON Schema draft 2020-12. Local references are rebased without rewriting literal data or resources with an explicit `$id`, including nested resources.

@@ -97,7 +97,7 @@ public static class AsyncApiDocumentBuilder
 
         if (operation.Reply is { } reply)
         {
-            node["reply"] = CreateReply(operation, reply, rendering);
+            node["reply"] = CreateReply(reply, channelKey, channel, rendering.Messages);
         }
 
         if (operation.RequiresBearer)
@@ -108,22 +108,15 @@ public static class AsyncApiDocumentBuilder
         return node;
     }
 
-    private static JsonObject CreateReply(AsyncApiOperation operation, AsyncApiMessage reply, RenderingContext rendering)
+    private static JsonObject CreateReply(AsyncApiMessage reply, string channelKey, JsonObject channel, JsonObject messages)
     {
-        AddMessage(rendering.Messages, reply);
+        AddMessage(messages, reply);
         var messageKey = ComponentKey(reply.Name);
-        var key = operation.Id + ".reply";
-        if (rendering.Channels.ContainsKey(key))
-        {
-            throw new InvalidOperationException($"AsyncAPI reply channel '{key}' conflicts with another channel.");
-        }
-
-        var channel = GetChannel(rendering, key, operation.Address, operation.Protocol, operation.ServerName);
         channel[MessagesKey]![messageKey] = Reference($"#/components/messages/{messageKey}");
         return new JsonObject
         {
-            ["channel"] = Reference($"#/channels/{EscapePointer(key)}"),
-            [MessagesKey] = new JsonArray(Reference($"#/channels/{EscapePointer(key)}/messages/{messageKey}"))
+            ["channel"] = Reference($"#/channels/{EscapePointer(channelKey)}"),
+            [MessagesKey] = new JsonArray(Reference($"#/channels/{EscapePointer(channelKey)}/messages/{messageKey}"))
         };
     }
 

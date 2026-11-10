@@ -122,6 +122,67 @@ public sealed class DocumentationTests
         operation.Action.ShouldBe(AsyncApiAction.Receive);
     }
 
+    [Fact(DisplayName = "Requests and replies share one channel while preserving operation and message contracts")]
+    public void ReusesOperationChannelsForReplies()
+    {
+        var descriptor = new ApiDocumentDescriptor("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi);
+        AsyncApiMessage[] messages =
+        [
+            new("read.request", new JsonObject { ["const"] = "read.request" }),
+            new("read.response", new JsonObject { ["const"] = "read.response" }),
+            new("watch.request", new JsonObject { ["const"] = "watch.request" }),
+            new("watch.response", new JsonObject { ["const"] = "watch.response" })
+        ];
+        var read = new AsyncApiOperation("read", "/hubs/state", AsyncApiAction.Receive, messages[0], "ws") { Reply = messages[1] };
+        var watch = new AsyncApiOperation("watch", "/hubs/state", AsyncApiAction.Receive, messages[2], "ws") { Reply = messages[3] };
+
+        var document = AsyncApiDocumentBuilder.Build(descriptor, [read, watch]);
+
+        document["channels"]!.AsObject().Select(channel => channel.Key).ShouldBe(["/hubs/state"]);
+        document["operations"]!.AsObject().Select(operation => operation.Key).ShouldBe(["read", "watch"]);
+        document["channels"]!["/hubs/state"]!["messages"]!.AsObject().Select(message => message.Key).Order()
+            .ShouldBe(messages.Select(message => message.Name).Order());
+        document["components"]!["messages"]!.AsObject().Select(message => message.Key).Order()
+            .ShouldBe(messages.Select(message => message.Name).Order());
+        foreach (var operation in new[] { read, watch })
+        {
+            var actual = document["operations"]![operation.Id]!;
+            actual["channel"]!["$ref"]!.GetValue<string>().ShouldBe("#/channels/~1hubs~1state");
+            JsonNode.DeepEquals(actual["channel"], actual["reply"]!["channel"]).ShouldBeTrue();
+            actual["messages"]!.AsArray().Count.ShouldBe(1);
+            actual["messages"]![0]!["$ref"]!.GetValue<string>()
+                .ShouldBe($"#/channels/~1hubs~1state/messages/{operation.Message.Name}");
+            actual["reply"]!["messages"]!.AsArray().Count.ShouldBe(1);
+            actual["reply"]!["messages"]![0]!["$ref"]!.GetValue<string>()
+                .ShouldBe($"#/channels/~1hubs~1state/messages/{operation.Reply!.Name}");
+        }
+
+        foreach (var message in messages)
+        {
+            var component = document["components"]!["messages"]![message.Name]!;
+            component["name"]!.GetValue<string>().ShouldBe(message.Name);
+            JsonNode.DeepEquals(component["payload"]!["schema"], message.Schema).ShouldBeTrue();
+        }
+    }
+
+    [Theory(DisplayName = "Reply messages do not reserve channel addresses derived from operation identifiers")]
+    [InlineData("a", "z")]
+    [InlineData("z", "a")]
+    public void ReplyIdentifiersDoNotConflictWithChannelAddresses(string ordinaryId, string replyId)
+    {
+        var descriptor = new ApiDocumentDescriptor("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi);
+        var message = new AsyncApiMessage("Event", new JsonObject());
+        var ordinary = new AsyncApiOperation(ordinaryId, replyId + ".reply", AsyncApiAction.Send, message, "kafka");
+        var request = new AsyncApiOperation(replyId, "topic", AsyncApiAction.Receive, message, "kafka") { Reply = message };
+
+        var document = AsyncApiDocumentBuilder.Build(descriptor, [ordinary, request]);
+
+        document["channels"]!.AsObject().Count.ShouldBe(2);
+        document["channels"]![replyId + ".reply"]!["address"]!.GetValue<string>().ShouldBe(replyId + ".reply");
+        document["channels"]!["topic"]!["address"]!.GetValue<string>().ShouldBe("topic");
+        document["operations"]![replyId]!["reply"]!["channel"]!["$ref"]!.GetValue<string>().ShouldBe("#/channels/topic");
+    }
+
     [Fact(DisplayName = "AsyncAPI components are reused and conflicting operations messages or servers fail")]
     public void RejectsConflictingDefinitions()
     {
@@ -138,9 +199,6 @@ public sealed class DocumentationTests
         var conflicting = new AsyncApiOperation("other", "topic", AsyncApiAction.Send,
             new AsyncApiMessage("event", new JsonObject { ["type"] = "integer" }), "kafka");
         Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [send, conflicting]));
-        var reply = new AsyncApiOperation("z", "topic", AsyncApiAction.Receive, message, "kafka") { Reply = message };
-        var collidingChannel = new AsyncApiOperation("a", "z.reply", AsyncApiAction.Send, message, "kafka");
-        Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [collidingChannel, reply]));
         var server = new AsyncApiServer("kafka", "localhost:9092", "kafka");
         Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [], [server, server]));
         Should.Throw<ArgumentNullException>(() => AsyncApiDocumentBuilder.Build(null!, []));
@@ -189,9 +247,9 @@ public sealed class DocumentationTests
 
         var actual = document["operations"]![name]!;
         actual["channel"]!["$ref"]!.GetValue<string>().ShouldBe($"#/channels/{pointer}:{pointer}");
-        actual["reply"]!["channel"]!["$ref"]!.GetValue<string>().ShouldBe($"#/channels/{pointer}.reply");
+        actual["reply"]!["channel"]!["$ref"]!.GetValue<string>().ShouldBe($"#/channels/{pointer}:{pointer}");
         actual["reply"]!["messages"]![0]!["$ref"]!.GetValue<string>()
-            .ShouldBe($"#/channels/{pointer}.reply/messages/Event");
+            .ShouldBe($"#/channels/{pointer}:{pointer}/messages/Event");
         document["channels"]![name + ":" + name]!["servers"]![0]!["$ref"]!.GetValue<string>()
             .ShouldBe($"#/servers/{pointer}");
     }
@@ -291,8 +349,9 @@ public sealed class DocumentationTests
         var document = AsyncApiDocumentBuilder.Build(descriptor, [operation], explicitEmptyServers ? [] : null);
 
         document["servers"]!.AsObject().ShouldBeEmpty();
+        document["channels"]!.AsObject().Count.ShouldBe(1);
         document["channels"]!["events"]!["servers"].ShouldBeNull();
-        document["channels"]!["send.reply"]!["servers"].ShouldBeNull();
+        document["channels"]!["send.reply"].ShouldBeNull();
     }
 
     [Fact(DisplayName = "Channels and replies reference every matching server and exclude other protocols")]
@@ -327,7 +386,7 @@ public sealed class DocumentationTests
         Should.Throw<ArgumentException>(() => registry.GetSchema(typeof(Payload), "external"));
     }
 
-    [Fact(DisplayName = "Channels reject protocol conflicts and reply collisions in either registration order")]
+    [Fact(DisplayName = "Channels reject incompatible protocols")]
     public void RejectsIncompatibleChannelReuse()
     {
         var descriptor = new ApiDocumentDescriptor("events", "Events", "module", "1.0", ApiDocumentFormat.AsyncApi);
@@ -335,8 +394,6 @@ public sealed class DocumentationTests
         var send = new AsyncApiOperation("a", "events", AsyncApiAction.Send, message, "kafka") { Reply = message };
         var otherProtocol = new AsyncApiOperation("z", "events", AsyncApiAction.Send, message, "amqp");
         Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [send, otherProtocol]));
-        var collidingAddress = new AsyncApiOperation("z", "a.reply", AsyncApiAction.Send, message, "kafka");
-        Should.Throw<InvalidOperationException>(() => AsyncApiDocumentBuilder.Build(descriptor, [send, collidingAddress]));
     }
 
     [Fact(DisplayName = "Message component identifiers are valid and collision-free for arbitrary display names")]

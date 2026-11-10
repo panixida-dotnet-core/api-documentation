@@ -75,7 +75,7 @@ public sealed class AsyncApiOperation
         init => _bindings = (JsonObject?)value?.DeepClone();
     }
 
-    /// <summary>Gets the optional reply message.</summary>
+    /// <summary>Gets the optional reply message returned over the operation's channel.</summary>
     public AsyncApiMessage? Reply { get; init; }
 
     /// <summary>Gets whether bearer authentication is required.</summary>
