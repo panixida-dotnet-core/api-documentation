@@ -67,7 +67,6 @@ dotnet restore
 dotnet format
 dotnet build --configuration Release
 dotnet test --configuration Release
-dotnet publish tests/PANiXiDA.Core.ApiDocumentation.AotSmoke -c Release -r linux-x64
 ```
 
-Run the published executable to verify document generation with reflection serialization disabled. CI requires tests, formatting and SonarQube before publishing.
+CI requires tests, formatting and SonarQube before publishing.
