@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <PublishAot>true</PublishAot>
+        <RuntimeFrameworkVersion>10.0.14</RuntimeFrameworkVersion>
+        <IlcPackageVersion>10.0.14</IlcPackageVersion>
+        <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../src/PANiXiDA.Core.ApiDocumentation/PANiXiDA.Core.ApiDocumentation.csproj" />
+    </ItemGroup>
+</Project>

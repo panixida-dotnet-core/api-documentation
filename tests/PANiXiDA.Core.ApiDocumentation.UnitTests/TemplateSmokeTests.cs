@@ -1,4 +1,4 @@
-namespace PANiXiDA.Core.Template.UnitTests;
+namespace PANiXiDA.Core.ApiDocumentation.UnitTests;
 
 public sealed class TemplateSmokeTests
 {
@@ -7,6 +7,6 @@ public sealed class TemplateSmokeTests
     {
         var assemblyName = typeof(TemplateSmokeTests).Assembly.GetName().Name;
 
-        assemblyName.ShouldBe("PANiXiDA.Core.Template.UnitTests");
+        assemblyName.ShouldBe("PANiXiDA.Core.ApiDocumentation.UnitTests");
     }
 }
