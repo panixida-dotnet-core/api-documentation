@@ -7,7 +7,7 @@ namespace PANiXiDA.Core.ApiDocumentation.AsyncApi;
 /// <summary>Builds AsyncAPI 3.0 documents from transport-owned metadata.</summary>
 public static class AsyncApiDocumentBuilder
 {
-    private const string Messages = "messages";
+    private const string MessagesKey = "messages";
 
     /// <summary>Builds a deterministic document with shared message components and optional replies.</summary>
     /// <param name="descriptor">The document identity.</param>
@@ -38,7 +38,7 @@ public static class AsyncApiDocumentBuilder
             requiresBearer |= operation.RequiresBearer;
         }
 
-        var components = new JsonObject { [Messages] = rendering.Messages };
+        var components = new JsonObject { [MessagesKey] = rendering.Messages };
         if (requiresBearer)
         {
             components["securitySchemes"] = new JsonObject
@@ -76,13 +76,13 @@ public static class AsyncApiDocumentBuilder
         var channel = GetChannel(rendering, channelKey, operation.Address, operation.Protocol, operation.ServerName);
         AddMessage(rendering.Messages, operation.Message);
         var messageKey = ComponentKey(operation.Message.Name);
-        channel[Messages]![messageKey] = Reference($"#/components/messages/{messageKey}");
+        channel[MessagesKey]![messageKey] = Reference($"#/components/messages/{messageKey}");
         var node = new JsonObject
         {
             ["action"] = operation.Action == AsyncApiAction.Send ? "send" : "receive",
             ["title"] = operation.Id,
             ["channel"] = Reference($"#/channels/{EscapePointer(channelKey)}"),
-            [Messages] = new JsonArray(Reference(
+            [MessagesKey] = new JsonArray(Reference(
                 $"#/channels/{EscapePointer(channelKey)}/messages/{messageKey}"))
         };
         if (operation.Summary is not null)
@@ -119,11 +119,11 @@ public static class AsyncApiDocumentBuilder
         }
 
         var channel = GetChannel(rendering, key, operation.Address, operation.Protocol, operation.ServerName);
-        channel[Messages]![messageKey] = Reference($"#/components/messages/{messageKey}");
+        channel[MessagesKey]![messageKey] = Reference($"#/components/messages/{messageKey}");
         return new JsonObject
         {
             ["channel"] = Reference($"#/channels/{EscapePointer(key)}"),
-            [Messages] = new JsonArray(Reference($"#/channels/{EscapePointer(key)}/messages/{messageKey}"))
+            [MessagesKey] = new JsonArray(Reference($"#/channels/{EscapePointer(key)}/messages/{messageKey}"))
         };
     }
 
@@ -168,7 +168,7 @@ public static class AsyncApiDocumentBuilder
             throw new InvalidOperationException($"AsyncAPI server '{serverName}' with protocol '{protocol}' was not registered.");
         }
 
-        var channel = new JsonObject { ["address"] = address, [Messages] = new JsonObject() };
+        var channel = new JsonObject { ["address"] = address, [MessagesKey] = new JsonObject() };
         if (serverRefs.Count > 0)
         {
             channel["servers"] = serverRefs;
@@ -230,8 +230,8 @@ public static class AsyncApiDocumentBuilder
     private sealed class RenderingContext(JsonObject servers)
     {
         internal JsonObject Servers { get; } = servers;
-        internal JsonObject Channels { get; } = new();
-        internal JsonObject Messages { get; } = new();
+        internal JsonObject Channels { get; } = [];
+        internal JsonObject Messages { get; } = [];
         internal Dictionary<string, ChannelIdentity> ChannelIdentities { get; } = new(StringComparer.Ordinal);
     }
 }
