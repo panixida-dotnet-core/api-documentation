@@ -46,7 +46,9 @@ For DI, register sources with `AddApiDocumentSource<TSource>()` and generated co
 
 ## Contracts and versions
 
-`ApiDocumentDescriptor` identifies a module, version, format and document path. Names and paths must be unique. `ApiContractAttribute` provides module/version metadata to transport generators.
+`ApiDocumentDescriptor` identifies a module, version, format and document path. Names and paths must be unique. Transport-specific interfaces provide module/version metadata to their generators.
+
+`ApiOperationMetadata` contains an operation display name and optional summary. `AsyncApiOperation.Name` supplies its rendered title independently of its stable `Id`.
 
 Operations use the application's perspective: `Send` means publishing, `Receive` means consuming. Replies are explicit message contracts.
 

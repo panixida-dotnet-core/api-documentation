@@ -80,7 +80,7 @@ public static class AsyncApiDocumentBuilder
         var node = new JsonObject
         {
             ["action"] = operation.Action == AsyncApiAction.Send ? "send" : "receive",
-            ["title"] = operation.Id,
+            ["title"] = operation.Name ?? operation.Id,
             ["channel"] = Reference($"#/channels/{EscapePointer(channelKey)}"),
             [MessagesKey] = new JsonArray(Reference(
                 $"#/channels/{EscapePointer(channelKey)}/messages/{messageKey}"))

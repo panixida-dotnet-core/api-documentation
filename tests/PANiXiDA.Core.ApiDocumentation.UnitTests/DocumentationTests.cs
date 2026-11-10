@@ -97,7 +97,7 @@ public sealed class DocumentationTests
         var bindings = new JsonObject { ["x-signalr"] = new JsonObject { ["target"] = "GetState" } };
         var operation = new AsyncApiOperation("GetState", "/hubs/state", AsyncApiAction.Receive, message, "signalr",
             "Read state")
-        { Bindings = bindings, Reply = message, RequiresBearer = true };
+        { Name = "Get current state", Bindings = bindings, Reply = message, RequiresBearer = true };
         var document = AsyncApiDocumentBuilder.Build(descriptor, [operation],
             [new AsyncApiServer("signalr", "localhost:5000", "signalr"), new AsyncApiServer("kafka", "localhost:9092", "kafka")]);
 
@@ -106,6 +106,8 @@ public sealed class DocumentationTests
         document["info"]!["x-module"]!.GetValue<string>().ShouldBe("module");
         document["info"]!["x-deprecated"]!.GetValue<bool>().ShouldBeTrue();
         document["operations"]!["GetState"]!["action"]!.GetValue<string>().ShouldBe("receive");
+        document["operations"]!["GetState"]!["title"]!.GetValue<string>().ShouldBe("Get current state");
+        operation.Name.ShouldBe("Get current state");
         document["operations"]!["GetState"]!["reply"].ShouldNotBeNull();
         document["operations"]!["GetState"]!["security"]!.AsArray().Count.ShouldBe(1);
         document["channels"]!["/hubs/state"]!["servers"]!.AsArray().Count.ShouldBe(1);
@@ -171,6 +173,11 @@ public sealed class DocumentationTests
     public void MetadataGuards()
     {
         var message = new AsyncApiMessage("event", new JsonObject());
+        var metadata = new ApiOperationMetadata("Publish event", "Event description");
+        metadata.Name.ShouldBe("Publish event");
+        metadata.Summary.ShouldBe("Event description");
+        new ApiOperationMetadata("Publish event").Summary.ShouldBeNull();
+        new AsyncApiOperation("id", "topic", AsyncApiAction.Send, message, "kafka") { Name = null }.Name.ShouldBeNull();
         new AsyncApiOperation("empty", "topic", AsyncApiAction.Send, message, "kafka") { Bindings = null }.Bindings.ShouldBeNull();
         Should.Throw<ArgumentException>(() => new AsyncApiMessage("", new JsonObject()));
         Should.Throw<ArgumentNullException>(() => new AsyncApiMessage("name", null!));
@@ -185,13 +192,8 @@ public sealed class DocumentationTests
         Should.Throw<ArgumentException>(() => new AsyncApiServer("name", "host", ""));
         Should.Throw<ArgumentException>(() => new AsyncApiServer("name", "user@host", "kafka"));
         Should.Throw<ArgumentException>(() => new AsyncApiServer("name", "bad\nhost", "kafka"));
-        Should.Throw<ArgumentException>(() => new ApiContractAttribute("", "1.0"));
-        Should.Throw<ArgumentException>(() => new ApiContractAttribute("module", ""));
-        var contract = new ApiContractAttribute("module", "1.0") { Title = "Title", Deprecated = true };
-        contract.Module.ShouldBe("module");
-        contract.Version.ShouldBe("1.0");
-        contract.Title.ShouldBe("Title");
-        contract.Deprecated.ShouldBeTrue();
+        Should.Throw<ArgumentException>(() => new ApiOperationMetadata(""));
+        Should.Throw<ArgumentException>(() => new AsyncApiOperation("id", "topic", AsyncApiAction.Send, message, "kafka") { Name = " " });
     }
 
     [Fact(DisplayName = "Named brokers isolate identical topic addresses and reject unknown servers")]

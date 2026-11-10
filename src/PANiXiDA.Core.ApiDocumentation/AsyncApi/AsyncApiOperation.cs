@@ -6,6 +6,7 @@ namespace PANiXiDA.Core.ApiDocumentation.AsyncApi;
 public sealed class AsyncApiOperation
 {
     private readonly JsonObject? _bindings;
+    private string? _name;
 
     /// <summary>Creates an operation description.</summary>
     /// <param name="id">The operation's unique identifier.</param>
@@ -36,6 +37,20 @@ public sealed class AsyncApiOperation
 
     /// <summary>Gets the operation identifier.</summary>
     public string Id { get; }
+    /// <summary>Gets or sets the display name. When omitted, the stable identifier is displayed.</summary>
+    public string? Name
+    {
+        get => _name;
+        init
+        {
+            if (value is not null)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(value);
+            }
+
+            _name = value;
+        }
+    }
     /// <summary>Gets the channel address.</summary>
     public string Address { get; }
     /// <summary>Gets the message direction.</summary>
